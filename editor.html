@@ -1,0 +1,198 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>Car</title>
+        <script src="/lib/phaser.min.js"></script>
+        <script src="/lib/bezier.js"></script>
+        <script src="/lib/game.js"></script>
+    </head>
+    <body>
+
+    <button onClick="addSegment()">Add segment</button>
+    <button onClick="removeSegment()">Remove segment</button>
+    <button onClick="joinSegments()">Join segments</button>
+    <br>
+    <textarea id="pathResult" style="width: 100%; height: 100%;"></textarea>
+
+    <script type="text/javascript">
+        var game = null;
+        var track = null;
+        var segments = [[]];
+            
+        function addSegment() {
+            const controlPoints = segments[segments.length - 1];
+            
+            // Get last control point of the last segment.
+            const last = controlPoints[3];
+            
+            segments.push([
+                // NB! This preserves reference to the last point of the last segment
+                // which would most probably cause nasty bugs in real world. However,
+                // in this case, we use this "spooky action at a distance" as a 
+                // shortcut to simplify things when the control points are modified
+                // in an editor.
+                last, 
+                
+                Phaser.Point.add(last, new Phaser.Point(-50, -50)),
+                Phaser.Point.add(last, new Phaser.Point(50, 50)),
+                Phaser.Point.add(last, new Phaser.Point(100, 100))
+            ]);
+            
+            updateTrack();
+        }
+        
+        function removeSegment() {
+            // Remove the last segment.
+            if (segments.length > 1) {
+                segments.pop();
+                updateTrack();
+            }
+        }
+    
+        function joinSegments() {
+            // Completes the circuit.
+            if (segments.length > 1) {
+                const first = segments[0];
+                const last = segments[segments.length - 1];
+                
+                // Use this "spooky action at a distance" again to complete
+                // the path.
+                first[0] = last[3];
+                
+                updateTrack();
+            }
+        }
+    
+        function updateTrack() {
+            const width = game.context.canvas.width;
+            const height = game.context.canvas.height;
+        
+            // Normalize control points.
+            const normalizedSegments = segments.map(cp => cp.map(p => new Phaser.Point(p.x / width, p.y / height)));
+        
+            game.cache.addJSON('circuit', null, normalizedSegments);
+            
+            if (track !== null) {
+                track.destroy();
+            }
+            
+            track = new Track(game, width, height, true, 96);
+
+            document.getElementById("pathResult").value =
+                JSON.stringify(normalizedSegments.map(cp => cp.map(p => ({ x: p.x, y: p.y }))));
+        }
+        
+        window.onload = function() {
+            game = new Phaser.Game(1000, 1000, Phaser.CANVAS, 'phaser-example', { create: create, render: render });
+            
+            var selectedControlPoint = null;
+
+            function create() {
+                game.stage.backgroundColor = '#dddddd';
+            
+                for (var i = 1; i < 5; i++) { 
+                    segments[0].push(
+                        new Phaser.Point(i * game.context.canvas.width / 5, ((i % 3) + 1) * game.context.canvas.height / 4)
+                    );
+                }
+             
+                updateTrack();
+            }
+            
+            function render() {
+                game.debug.text(game.input.x + ' x ' + game.input.y, 32, 32);
+                
+                // Check if left mouse button is pressed.
+                if (game.input.activePointer.leftButton.isDown) {
+                
+                    // Select the closest control point if none selected.
+                    if (selectedControlPoint === null) {
+                        selectedControlPoint = closestControlPoint(segments, new Phaser.Point(game.input.x, game.input.y));
+                    }
+                    
+                    // Move the control point if selected.
+                    if (selectedControlPoint !== null) {                    
+                        selectedControlPoint.x = game.input.x;
+                        selectedControlPoint.y = game.input.y;
+                    }
+                    
+                    updateTrack();
+                }
+                
+                // Reset control point selection when the button is released.
+                else {
+                    selectedControlPoint = null;
+                }
+
+                drawControlPoints(game.context, segments);
+            }
+            
+            function drawControlPoints(ctx, controlPoints) {
+                function drawEndPoint(point) {
+                    ctx.fillStyle = "rgba(69, 69, 69, 0.7)"
+
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, 1.000 * 20.0, 0, 2 * Math.PI, false);
+                    ctx.arc(point.x, point.y, 0.902 * 20.0, 0, 2 * Math.PI, true)
+                    ctx.arc(point.x, point.y, 0.784 * 20.0, 0, 2 * Math.PI, false);
+                    ctx.arc(point.x, point.y, 0.235 * 20.0, 0, 2 * Math.PI, true)
+                    ctx.fill();
+                }
+                
+                function drawControlPoint(point, sign) {
+                    const w = 0.548 * 20.0;
+                    const h = 0.236 * 20.0;
+                                    
+                    ctx.fillStyle = "rgba(133, 133, 133, 0.7)"
+
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, 0.9 * 20.0, 0, 2 * Math.PI, false);
+                    ctx.save();
+                        ctx.translate(point.x, point.y);
+                        ctx.rotate(sign * Math.PI / 4.0);
+                        ctx.translate(-w / 2.0, -h / 2.0);
+                        ctx.moveTo(0, 0);
+                        ctx.lineTo(0, h);
+                        ctx.lineTo(w, h);
+                        ctx.lineTo(w, 0);
+                        ctx.closePath();
+                    ctx.restore();
+                    ctx.fill();
+                }
+
+                if (controlPoints.length > 0) {
+                    
+                    // Draw starting point.
+                    drawEndPoint(controlPoints[0][0]);
+                    
+                    // Draw rest of the control points.
+                    for (let i = 0; i < controlPoints.length; ++i) {
+                        drawControlPoint(controlPoints[i][1], 1);
+                        drawControlPoint(controlPoints[i][2], -1);
+                        drawEndPoint(controlPoints[i][3]);
+                    }
+                }
+            }
+
+            function closestControlPoint(segments, target) {
+                let bestLength = Infinity;
+                let bestPoint = null;
+            
+                for (let i = 0; i < segments.length; ++i) {
+                    for (let j = 0; j < segments[i].length; ++j) {
+                        const length = Phaser.Point.subtract(segments[i][j], target).getMagnitude();
+                        
+                        if (length < bestLength && length < 20.0) {
+                            bestLength = length;
+                            bestPoint = segments[i][j];
+                        }
+                    }
+                }
+                
+                return bestPoint;
+            }
+        };
+    </script>
+    </body>
+</html>

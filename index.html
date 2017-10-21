@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>Car</title>
+        <script src="/lib/phaser.min.js"></script>
+        <script src="/lib/bezier.js"></script>
+        <script src="/lib/game.js"></script>
+    </head>
+    <body>
+
+    <script type="text/javascript">
+        window.onload = function() {
+            var game = new Phaser.Game(1000, 1000, Phaser.AUTO, 'phaser-example', { preload: preload, create: create, update: update, render: render });
+            var car;
+            
+            function preload() {
+                game.load.json('circuit', 'assets/circuits/a1ring.json');
+                game.load.image('earth', 'assets/sand.png');
+                game.load.image('car', 'assets/sprites/audi.png');
+            }
+            
+            function create() {
+                const earth = game.add.tileSprite(0, 0, 1000, 1000, 'earth');
+                const track = new Track(game, 1000, 1000, true, 96);
+                
+                car = new Car(game, track, 96);
+                
+                // Use arcade style physics.
+                game.physics.startSystem(Phaser.Physics.ARCADE);
+                game.physics.enable(car.sprite, Phaser.Physics.ARCADE);
+             
+            }
+            
+            function update() {
+                car.sprite.body.velocity.x = 0;
+                car.sprite.body.velocity.y = 0;
+                car.sprite.body.angularVelocity = 0;
+                
+                const hood = Phaser.Point.add(new Phaser.Point(car.sprite.x, car.sprite.y), car.getHood());
+                const trunk = Phaser.Point.add(new Phaser.Point(car.sprite.x, car.sprite.y), car.getTrunk());
+                
+                const movesForward = car.track.contains(hood.x, hood.y) && game.input.keyboard.isDown(Phaser.Keyboard.UP);
+                const movesBackward = car.track.contains(trunk.x, trunk.y) && game.input.keyboard.isDown(Phaser.Keyboard.DOWN);
+                
+                if (game.input.keyboard.isDown(Phaser.Keyboard.LEFT) && (movesForward || movesBackward))
+                    car.sprite.body.angularVelocity = -180;
+                    
+                else if (game.input.keyboard.isDown(Phaser.Keyboard.RIGHT) && (movesForward || movesBackward))
+                    car.sprite.body.angularVelocity = 180;
+
+                if (movesForward)
+                    game.physics.arcade.velocityFromAngle(car.sprite.angle, 300, car.sprite.body.velocity);
+                    
+                else if (movesBackward)
+                    game.physics.arcade.velocityFromAngle(car.sprite.angle, -120, car.sprite.body.velocity);
+            }
+            
+            function render() {
+                //game.debug.text(game.input.x + ' x ' + game.input.y, 32, 32);
+            }
+        };
+    </script>
+    </body>
+</html>

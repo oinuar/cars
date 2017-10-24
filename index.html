@@ -1,65 +1,611 @@
 <!doctype html>
 <html>
-    <head>
-        <meta charset="utf-8" />
-        <title>Car</title>
-        <script src="/lib/phaser.min.js"></script>
-        <script src="/lib/bezier.js"></script>
-        <script src="/lib/game.js"></script>
-    </head>
-    <body>
 
-    <script type="text/javascript">
-        window.onload = function() {
-            var game = new Phaser.Game(1000, 1000, Phaser.AUTO, 'phaser-example', { preload: preload, create: create, update: update, render: render });
-            var car;
-            
-            function preload() {
-                game.load.json('circuit', 'assets/circuits/a1ring.json');
-                game.load.image('earth', 'assets/sand.png');
-                game.load.image('car', 'assets/sprites/audi.png');
-            }
-            
-            function create() {
-                const earth = game.add.tileSprite(0, 0, 1000, 1000, 'earth');
-                const track = new Track(game, 1000, 1000, true, 96);
-                
-                car = new Car(game, track, 96);
-                
-                // Use arcade style physics.
-                game.physics.startSystem(Phaser.Physics.ARCADE);
-                game.physics.enable(car.sprite, Phaser.Physics.ARCADE);
-             
-            }
-            
-            function update() {
-                car.sprite.body.velocity.x = 0;
-                car.sprite.body.velocity.y = 0;
-                car.sprite.body.angularVelocity = 0;
-                
-                const hood = Phaser.Point.add(new Phaser.Point(car.sprite.x, car.sprite.y), car.getHood());
-                const trunk = Phaser.Point.add(new Phaser.Point(car.sprite.x, car.sprite.y), car.getTrunk());
-                
-                const movesForward = car.track.contains(hood.x, hood.y) && game.input.keyboard.isDown(Phaser.Keyboard.UP);
-                const movesBackward = car.track.contains(trunk.x, trunk.y) && game.input.keyboard.isDown(Phaser.Keyboard.DOWN);
-                
-                if (game.input.keyboard.isDown(Phaser.Keyboard.LEFT) && (movesForward || movesBackward))
-                    car.sprite.body.angularVelocity = -180;
-                    
-                else if (game.input.keyboard.isDown(Phaser.Keyboard.RIGHT) && (movesForward || movesBackward))
-                    car.sprite.body.angularVelocity = 180;
+<head>
+   <meta charset="utf-8" />
+   <title>Car</title>
+   <script src="/lib/phaser.min.js"></script>
+   <script src="/lib/bezier.js"></script>
+   <script src="/lib/game.js"></script>
+   <script src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+   <script src="/lib/jquery.console.js"></script>
+   <style>
+      html,
+      body {
+         margin: 0;
+         padding: 0;
+         width: 100%;
+         height: 100%;
+         overflow: hidden;
+      }
 
-                if (movesForward)
-                    game.physics.arcade.velocityFromAngle(car.sprite.angle, 300, car.sprite.body.velocity);
-                    
-                else if (movesBackward)
-                    game.physics.arcade.velocityFromAngle(car.sprite.angle, -120, car.sprite.body.velocity);
+      #console {
+         font-size: 14px;
+         word-wrap: break-word;
+         position: absolute;
+         bottom: 0;
+         left: 0;
+         width: 80%;
+         white-space: pre-wrap;
+         z-index: 1;
+         border-top: 2px solid #1ad027;
+      }
+
+      #callstack {
+         position: absolute;
+         height: 100%;
+         top: 0;
+         right: 0;
+         width: 20%;
+         z-index: 1;
+         border-left: 2px solid #1ad027;
+      }
+
+      #console div.jquery-console-inner {
+         height: 15rem;
+         padding-top: 0.5em;
+         padding-bottom: 0.5em;
+         overflow: auto;
+      }
+
+      #console div.jquery-console-prompt-box {
+         color: #fff;
+         font-family: monospace;
+      }
+
+      #console span.jquery-console-cursor {
+         color: #333;
+         background-color: #fff;
+         font-weight: bold;
+      }
+
+      #console div.jquery-console-welcome {
+         color: #1ad027;
+         font-family: monospace;
+         font-weight: bold;
+         padding: 0.1em;
+      }
+
+      #console div.jquery-console-message-error {
+         color: #ef0505;
+         font-family: monospace;
+         font-weight: bold;
+         padding: 0.1em;
+      }
+
+      #console div.jquery-console-message-value {
+         color: #1ad027;
+         font-family: monospace;
+         padding: 0.1em;
+      }
+
+      #console div.jquery-console-message-type {
+         color: #52666f;
+         font-family: monospace;
+         padding: 0.1em;
+      }
+
+      #console span.jquery-console-prompt-label {
+         font-weight: bold;
+      }
+   </style>
+</head>
+
+<body>
+
+   <div id="cars" tabindex="-1"></div>
+   <div id="console" tabindex="0"></div>
+   <div id="callstack" tabindex="1"></div>
+
+   <script type="text/javascript">
+      $(document).ready(function () {
+
+         // Initialize the interactive console.
+         $('#console').console({
+            promptLabel: 'Car> ',
+            welcomeMessage: `
+                         __
+                   _.--""  |
+    .----.     _.-'   |/\\| |.--.                                           ___      ___      ___      ___
+    |    |__.-'   _________|  |_)  _______________                        / __|    /   \\    | _ \\    / __|
+    |  .-""-.""""" ___,    \`----'"))   __   .-""-.""""--._               | (__     | - |    |   /    \\__ \\
+    '-' ,--. \`    |   |   .---.       |:.| ' ,--. \`      _\`.              \\___|    |_|_|    |_|_\\    |___/
+     ( (    ) ) __|   |__ \\\\|// _..--  \\/ ( (    ) )--._".-.            _|"""""| _|"""""| _|"""""| _|"""""|
+      . \`--' ;\\__________________..--------. \`--' ;--------'            "\`-0-1-' "\`-1-0-' "\`-1-1-' "\`-1-0-'
+       \`-..-'                               \`-..-'
+
+            `,
+            autofocus: true,
+            animateScroll: true,
+            promptHistory: true,
+            commandHandle: parseCommands,
+            completeHandle: completeCommands
+         });
+
+         const cmd = new Machine(500);
+
+         function parseCommands(line) {
+            const tokens = line.trim().split(' ').filter(x => x !== '');
+
+            if (tokens.length === 0 || tokens[0] === 'help' || tokens[0] === '?') {
+               return [
+                  { msg: 'Available commands are:', className: 'jquery-console-message-value' },
+                  { msg: 'forward [{0..100} units]', className: 'jquery-console-message-value' },
+                  { msg: 'reverse [{0..100} units]', className: 'jquery-console-message-value' },
+                  { msg: 'turn [{-100..100} left/right]', className: 'jquery-console-message-value' },
+                  { msg: 'repeat {index} [{0..} times]', className: 'jquery-console-message-value' },
+                  { msg: 'cmd [show|head|halt|clear|run {index}|remove {index}]', className: 'jquery-console-message-value' },
+                  { msg: 'help', className: 'jquery-console-message-value' },
+                  { msg: '?', className: 'jquery-console-message-value' }
+               ];
             }
-            
-            function render() {
-                //game.debug.text(game.input.x + ' x ' + game.input.y, 32, 32);
+
+            switch (tokens[0]) {
+               case 'forward':
+               case 'reverse': {
+                  if (tokens.length < 2) {
+                     return [
+                        { msg: `Not enough parameters for '${tokens[0]}':`, className: 'jquery-console-message-error' },
+                        { msg: `Expected a floating point parameter from 0 to 100 units.`, className: 'jquery-console-message-error' }
+                     ];
+                  }
+
+                  const value = parseFloat(tokens[1]);
+
+                  if (value < 0 || value > 100) {
+                     return [{ msg: `Value ${value} is out of bounds for '${tokens[0]}'`, className: 'jquery-console-message-error' }];
+                  }
+
+                  if (tokens[0] === 'forward') {
+                     cmd.add(forwardCommand(value));
+                  } else {
+                     cmd.add(reverseCommand(value));
+                  }
+
+                  return [{}];
+               }
+
+               case 'turn': {
+                  if (tokens.length < 2) {
+                     return [
+                        { msg: `Not enough parameters for '${tokens[0]}':`, className: 'jquery-console-message-error' },
+                        { msg: `Expected a floating point parameter from -100 to 100.`, className: 'jquery-console-message-error' }
+                     ];
+                  }
+
+                  const value = parseFloat(tokens[1]);
+
+                  if (value < -100 || value > 100) {
+                     return [{ msg: `Value ${value} is out of bounds for '${tokens[0]}'.`, className: 'jquery-console-message-error' }];
+                  }
+
+                  cmd.add(turnCommand(value));
+
+                  return [{}];
+               }
+
+               case 'repeat': {
+                  if (tokens.length < 3) {
+                     return [
+                        { msg: `Not enough parameters for '${tokens[0]}':`, className: 'jquery-console-message-error' },
+                        { msg: `Expected two integer paramters: index and amount.`, className: 'jquery-console-message-error' }
+                     ];
+                  }
+
+                  const index = parseInt(tokens[1], 10);
+                  const amount = parseInt(tokens[2], 10);
+
+                  cmd.add(repeatCommand(index, amount));
+
+                  return [{}];
+               }
+
+               case 'cmd': {
+                  if (tokens.length < 2) {
+                     return [
+                        { msg: `Not enough parameters for '${tokens[0]}':`, className: 'jquery-console-message-error' },
+                        { msg: `Expected a command operation: show, halt, stop, clear run or remove.`, className: 'jquery-console-message-error' }
+                     ];
+                  }
+
+                  switch (tokens[1]) {
+                     case 'show':
+                        return [
+                           { msg: cmd.show(x => `{${x.name}}`).join(' -> '), className: 'jquery-console-message-value' }
+                        ];
+
+                     case 'head':
+                        return [
+                           { msg: cmd.head().toString(), className: 'jquery-console-message-value' }
+                        ];
+
+                     case 'halt':
+                        cmd.halt();
+                        return [{}];
+
+                     case 'clear':
+                        cmd.clear();
+                        return [{}];
+
+                     case 'run': {
+                        if (tokens.length < 3) {
+                           return [
+                              { msg: `Not enough parameters for '${tokens[0]} ${tokens[1]}':`, className: 'jquery-console-message-error' },
+                              { msg: `Expected an index.`, className: 'jquery-console-message-error' }
+                           ];
+                        }
+
+                        const index = parseInt(tokens[2], 10);
+
+                        try {
+                           cmd.continue(index);
+                        } catch (error) {
+                           return [
+                              { msg: `Cannot run: ${error}`, className: 'jquery-console-message-error' }
+                           ];
+                        }
+
+                        return [{}];
+                     }
+
+                     case 'remove': {
+                        if (tokens.length < 3) {
+                           return [
+                              { msg: `Not enough parameters for '${tokens[0]} ${tokens[1]}':`, className: 'jquery-console-message-error' },
+                              { msg: `Expected an index.`, className: 'jquery-console-message-error' }
+                           ];
+                        }
+
+                        const index = parseInt(tokens[2], 10);
+
+                        try {
+                           cmd.remove(index);
+                        } catch (error) {
+                           return [
+                              { msg: `Cannot remove command: ${error}`, className: 'jquery-console-message-error' }
+                           ];
+                        }
+
+                        return [{}];
+                     }
+
+                     default:
+                        break;
+                  }
+
+                  return [
+                     { msg: `Unknown command '${tokens[0]} ${tokens[1]}':`, className: 'jquery-console-message-error' }
+                  ];
+               }
+
+               default:
+                  break;
             }
-        };
-    </script>
-    </body>
+
+            return [{ msg: `Unknown command '${tokens[0]}'`, className: 'jquery-console-message-error' }];
+         }
+
+         function completeCommands(prefix) {
+            const commands = ['forward', 'reverse', 'turn', 'repeat', 'cmd'];
+
+            return commands.filter(x => x.indexOf(prefix, 0) === 0).map(x => x.substring(prefix.length) + ' ');
+         }
+
+
+         function forwardCommand(units) {
+            return {
+               name: `forward ${units}`,
+               action: function (game, car) {
+                  game.physics.arcade.velocityFromAngle(car.sprite.angle, units, car.sprite.body.velocity);
+               }
+            };
+         }
+
+         function reverseCommand(units) {
+            return {
+               name: `reverse ${units}`,
+               action: function (game, car) {
+                  game.physics.arcade.velocityFromAngle(car.sprite.angle, -units, car.sprite.body.velocity);
+               }
+            };
+         }
+
+         function turnCommand(amount) {
+            return {
+               name: `turn ${amount}`,
+               action: function (game, car) {
+
+               }
+            };
+         }
+
+         function repeatCommand(index, n) {
+            const reset = n;
+
+            return {
+               name: `repeat ${index} ${n}`,
+               action: function (game, car) {
+                  if (this.error) {
+                     return;
+                  }
+
+                  --n;
+
+                  // Update name to show the loop counter.
+                  this.name = `repeat ${index} ${n < 0 ? reset : n}`;
+
+                  // Repeat if iterations left.
+                  if (n >= 0) {
+                     return index;
+                  }
+
+                  // Reset the counter so that command can be
+                  // executed again.
+                  else {
+                     n = reset;
+                  }
+               }
+            };
+         }
+
+         const smallLetters = [];
+         const bigLetters = [];
+         const emitters = [];
+
+         let track = null;
+         let car = null;
+         let earth = null;
+         let callstack = null;
+
+         function preload() {
+            this.game.load.json('circuit', 'assets/circuits/a1ring.json');
+            this.game.load.image('earth', 'assets/sand.png');
+            this.game.load.image('car', 'assets/sprites/audi.png');
+         }
+
+         function create() {
+            for (let i = 'a'.charCodeAt(0); i <= 'z'.charCodeAt(0); ++i) {
+               smallLetters.push(createBitmapSymbol.call(this, String.fromCharCode(i), 255, 255, 255));
+               bigLetters.push(createBitmapSymbol.call(this, String.fromCharCode(i).toUpperCase(), 255, 255, 255));
+            }
+
+            // Use arcade style physics.
+            this.game.physics.startSystem(Phaser.Physics.ARCADE);
+
+            buildGame.call(this, this.game.width - $('#callstack').width(), this.game.height - $('#console').height());
+
+            // Resize the game area when the browser window is resized.
+            $(window).resize(() => {
+               this.game.scale.setGameSize($(window).width(), $(window).height());
+               buildGame.call(this, $(window).width() - $('#callstack').width(), $(window).height() - $('#console').height());
+            });
+         }
+
+         function update() {
+            if (cmd.execute(this.game.time.elapsed, (error, command) => {
+               if (error) {
+                  command.error = !!error;
+               } else {
+                  return command.action(this.game, car, cmd);
+               }
+            })) {
+               updateCallstack.call(this, this.game.width - $('#callstack').width());
+            }
+
+            const hood = Phaser.Point.add(new Phaser.Point(car.sprite.x, car.sprite.y), car.getHood());
+            const trunk = Phaser.Point.add(new Phaser.Point(car.sprite.x, car.sprite.y), car.getTrunk());
+
+            /*if (this.game.input.keyboard.isDown(Phaser.Keyboard.UP) && car.track.contains(hood.x, hood.y)) {
+               this.game.physics.arcade.velocityFromAngle(car.sprite.angle, 300, car.sprite.body.velocity);
+            }
+
+            if (this.game.input.keyboard.isDown(Phaser.Keyboard.DOWN) && car.track.contains(trunk.x, trunk.y)) {
+               this.game.physics.arcade.velocityFromAngle(car.sprite.angle, -120, car.sprite.body.velocity);
+            }
+
+            if (!this.game.input.keyboard.isDown(Phaser.Keyboard.UP) && !this.game.input.keyboard.isDown(Phaser.Keyboard.DOWN)) {
+               car.sprite.body.velocity.x = 0;
+               car.sprite.body.velocity.y = 0;
+               car.sprite.body.angularVelocity = 0;
+            }
+
+            if (!this.game.input.keyboard.isDown(Phaser.Keyboard.LEFT) && !this.game.input.keyboard.isDown(Phaser.Keyboard.RIGHT)) {
+               car.sprite.body.angularVelocity = 0;
+            }*/
+
+            const direction = Phaser.Point.normalize(car.getHood()).dot(Phaser.Point.normalize(car.sprite.body.velocity));
+            const movesForward = direction > 0;
+            const movesBackward = direction < 0;
+
+            /*if (this.game.input.keyboard.isDown(Phaser.Keyboard.LEFT) && (movesForward || movesBackward)) {
+               car.sprite.body.angularVelocity = -180;
+            }
+
+            if (this.game.input.keyboard.isDown(Phaser.Keyboard.RIGHT) && (movesForward || movesBackward)) {
+               car.sprite.body.angularVelocity = 180;
+            }*/
+
+            // Don't allow movement off the track.
+            if (movesForward && !car.track.contains(hood.x, hood.y) || movesBackward && !car.track.contains(trunk.x, trunk.y)) {
+               car.sprite.body.velocity.x = 0;
+               car.sprite.body.velocity.y = 0;
+               car.sprite.body.angularVelocity = 0;
+            }
+         }
+
+         function render() {
+            //this.game.debug.text(, 32, 64);
+         }
+
+         function createBitmapSymbol(symbol, r, g, b) {
+            const bitmap = this.game.add.bitmapData(32, 32);
+            const text = this.game.make.text(0, 0, symbol, { font: 'bold 32px monospace' });
+
+            bitmap.fill(r, g, b);
+            bitmap.draw(text, 0, 0, null, null, 'destination-in');
+
+            return bitmap;
+         }
+
+         function updateCallstack(consoleX) {
+            if (callstack !== null) {
+               callstack.removeAll();
+            }
+
+            const commands = cmd.show((command, i) => (x, y, head) => {
+               const group = this.game.add.group();
+               const g = this.game.make.graphics(x, y);
+
+               if (i === head) {
+                  g.beginFill(0x1ad027);
+               }
+               else {
+                  g.beginFill(0xcccccc);
+               }
+
+               if (i < head) {
+                  g.lineStyle(4, 0xcccccc, 1);
+               }
+               else {
+                  g.lineStyle(4, 0x1ad027, 1);
+               }
+
+               const label = this.game.make.text(x, y, command.name, { font: 'bold 32px monospace', fill: '#ffffff' });
+
+               label.anchor.set(0.5, 0.5);
+
+               const paddingAndLineWidth = 8 + 4;
+               const width = label.width + paddingAndLineWidth;
+               const height = label.height + paddingAndLineWidth;
+
+               g.drawRoundedRect(-width / 2.0, -height / 2.0, width, height, paddingAndLineWidth);
+
+               g.moveTo(0, height / 2.0);
+               g.lineTo(0, height / 2.0 + 55);
+
+               group.add(g);
+               group.add(label);
+
+               return group;
+            });
+
+            commands.push((x, y, head) => {
+               const group = this.game.add.group();
+               const g = this.game.make.graphics(x, y);
+
+               if (commands.length - 1 === head) {
+                  g.beginFill(0x1ad027);
+               }
+               else {
+                  g.beginFill(0xcccccc);
+               }
+
+               g.lineStyle(4, 0x1ad027, 1);
+
+               const topPadding = commands.length - 1 === head && commands.length > 1 ? 55 : 0;
+
+               const label = this.game.make.text(x, y + topPadding, 'halt', { font: 'bold 32px monospace', fill: '#ffffff' });
+
+               label.anchor.set(0.5, 0.5);
+
+               const paddingAndLineWidth = 8 + 4;
+               const width = label.width + paddingAndLineWidth;
+               const height = label.height + paddingAndLineWidth;
+
+               g.drawRoundedRect(-width / 2.0, -height / 2.0 + topPadding, width, height, paddingAndLineWidth);
+
+               group.add(g);
+               group.add(label);
+
+               return group;
+            });
+
+            callstack = this.game.add.group();
+
+            // Draw every command.
+            const x = consoleX + (this.game.width - consoleX) / 2.0;
+            const y = this.game.height / 2.0;
+
+            // Draw head command to middle.
+            const headCommand = commands[cmd.head()](x, y, cmd.head());
+
+            let aboveY = y - headCommand.height;
+            let belowY = y + headCommand.height;
+
+            callstack.add(headCommand);
+
+            // Draw every other command to both sides as long as they fit the screen.
+            for (let i = cmd.head() - 1, j = cmd.head() + 1; i >= 0 || j < commands.length; --i, ++j) {
+               if (i >= 0 && aboveY >= 0) {
+                  const above = commands[i](x, aboveY, cmd.head());
+
+                  callstack.add(above);
+                  aboveY -= above.height - 5;
+               }
+
+               if (j < commands.length && belowY <= this.game.height - headCommand.height / 2.0) {
+                  const below = commands[j](x, belowY, cmd.head());
+
+                  callstack.add(below);
+                  belowY += below.height + 5;
+               }
+            }
+         }
+
+         function buildGame(consoleX, consoleY) {
+            if (earth !== null) {
+               earth.destroy();
+            }
+
+            if (track !== null) {
+               track.destroy();
+            }
+
+            if (car !== null) {
+               car.destroy();
+            }
+
+            const speeds = [500, 250, 25];
+            const scales = [1, 0.8, 0.4];
+            const ySpeeds = [50, 100, 80];
+            const amounts = [250, 500, 2000];
+
+            for (let i = 0; i < 3; ++i) {
+               if (emitters[i] !== undefined) {
+                  emitters[i].destroy();
+               }
+
+               emitters[i] = this.game.add.emitter(consoleX / 2.0, consoleY - 32, amounts[i])
+
+               emitters[i].makeParticles(smallLetters);
+               emitters[i].maxParticleScale = scales[i];
+               emitters[i].minParticleScale = scales[i];
+               emitters[i].minRotation = 0;
+               emitters[i].maxRotation = 0;
+               emitters[i].gravity = 0;
+               emitters[i].width = consoleX;
+
+               emitters[i].setYSpeed(ySpeeds[i], ySpeeds[i]);
+               emitters[i].setXSpeed(0, 0);
+
+               emitters[i].start(false, 12000, speeds[i]);
+            }
+
+            earth = this.game.add.tileSprite(0, 0, consoleX, consoleY, 'earth');
+            track = new Track(this.game, consoleX, consoleY, true, 96);
+            car = new Car(this.game, track, 96);
+
+            this.game.physics.enable(car.sprite, Phaser.Physics.ARCADE);
+
+            car.sprite.body.drag.x = 50;
+            car.sprite.body.drag.y = 50;
+
+            updateCallstack.call(this, consoleX);
+         }
+
+         new Phaser.Game('100%', '100%', Phaser.AUTO, 'cars', { preload: preload, create: create, update: update, render: render });
+      });
+   </script>
+</body>
+
 </html>

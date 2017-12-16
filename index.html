@@ -31,7 +31,7 @@
          border-top: 2px solid #1ad027;
       }
 
-      #callstack {
+      #dashboard {
          position: absolute;
          height: 100%;
          top: 0;
@@ -95,7 +95,7 @@
 
    <div id="cars" tabindex="-1"></div>
    <div id="console" tabindex="0"></div>
-   <div id="callstack" tabindex="1"></div>
+   <div id="dashboard" tabindex="1"></div>
 
    <script type="text/javascript">
       $(document).ready(function () {
@@ -356,6 +356,7 @@
          let car = null;
          let earth = null;
          let callstack = null;
+         let carBody = null;
 
          function preload() {
             this.game.load.json('circuit', 'assets/circuits/a1ring.json');
@@ -372,12 +373,12 @@
             // Use arcade style physics.
             this.game.physics.startSystem(Phaser.Physics.ARCADE);
 
-            buildGame.call(this, this.game.width - $('#callstack').width(), this.game.height - $('#console').height());
+            buildGame.call(this, this.game.width - $('#dashboard').width(), this.game.height - $('#console').height());
 
             // Resize the game area when the browser window is resized.
             $(window).resize(() => {
                this.game.scale.setGameSize($(window).width(), $(window).height());
-               buildGame.call(this, $(window).width() - $('#callstack').width(), $(window).height() - $('#console').height());
+               buildGame.call(this, $(window).width() - $('#dashboard').width(), $(window).height() - $('#console').height());
             });
          }
 
@@ -389,7 +390,7 @@
                   return command.action(this.game, car, cmd);
                }
             })) {
-               updateCallstack.call(this, this.game.width - $('#callstack').width());
+               updateDashboard.call(this, this.game.width - $('#dashboard').width());
             }
 
             const hood = Phaser.Point.add(new Phaser.Point(car.sprite.x, car.sprite.y), car.getHood());
@@ -447,10 +448,18 @@
             return bitmap;
          }
 
-         function updateCallstack(consoleX) {
+         function updateDashboard(consoleX) {
             if (callstack !== null) {
                callstack.removeAll();
             }
+
+            if (carBody != null) {
+               carBody.removeAll();
+            }
+
+            // Limit car width to 180px and make sure that aspect ratio is 1.3125.
+            const carWidth = Math.min(this.game.width - consoleX, 180);
+            const carHeight = 1.44444 * carWidth;
 
             const commands = cmd.show((command, i) => (x, y, head) => {
                const group = this.game.add.group();
@@ -522,9 +531,12 @@
 
             callstack = this.game.add.group();
 
+            //callstack.x = consoleX + (this.game.width - consoleX) / 2.0;
+            //callstack.y = this.game.height / 2.0;
+
             // Draw every command.
             const x = consoleX + (this.game.width - consoleX) / 2.0;
-            const y = this.game.height / 2.0;
+            const y = (this.game.height - carHeight - 20) / 2.0;
 
             // Draw head command to middle.
             const headCommand = commands[cmd.head()](x, y, cmd.head());
@@ -543,11 +555,61 @@
                   aboveY -= above.height - 5;
                }
 
-               if (j < commands.length && belowY <= this.game.height - headCommand.height / 2.0) {
+               if (j < commands.length && belowY <= this.game.height - carHeight - 20 - headCommand.height / 2.0) {
                   const below = commands[j](x, belowY, cmd.head());
 
                   callstack.add(below);
                   belowY += below.height + 5;
+               }
+            }
+
+            // Make sure that tire width is scaled by a factor 0.21875 in respect of car width. Also,
+            // set tire aspect ratio to 1.7142.
+            const tireWidth = 0.21875 * carWidth;
+            const tireHeight = 1.7142 * tireWidth;
+
+            carBody = this.game.add.group();
+
+            carBody.x = consoleX + (this.game.width - consoleX) / 2.0;
+            carBody.y = this.game.height - carHeight - 20;
+
+            const g = this.game.make.graphics(0, 0);
+
+            // Disable borders. Set car body color.
+            g.lineStyle(0, 0xcccccc, 1);
+            g.beginFill(0xcccccc);
+
+            // Draw the car body.
+            g.drawRoundedRect(-carWidth / 2.0 + tireWidth / 2.0, 0, carWidth - tireWidth / 2.0, carHeight);
+
+            carBody.add(g);
+
+            // Draw all tires.
+            for (let j = 0; j < 2; ++j) {
+               for (let i = 0; i < 2; ++i) {
+                  const x = i % 2 === 0
+                     ? -carWidth / 2.0 + tireWidth / 2.0
+                     : carWidth / 2.0;
+
+                  const y = j % 2 === 0
+                     ? tireHeight
+                     : carHeight - tireHeight;
+
+                  const g = this.game.make.graphics(x, y);
+
+                  // Disable borders. Set tire color.
+                  g.lineStyle(0, 0xcccccc, 1);
+                  g.beginFill(0x1ad027);
+
+                  // Draw a tire.
+                  g.drawRoundedRect(-tireWidth / 2.0, -tireHeight / 2.0, tireWidth, tireHeight);
+
+                  // Rotate front tires.
+                  if (j === 0) {
+                     g.angle = -35;
+                  }
+
+                  carBody.add(g);
                }
             }
          }
@@ -565,7 +627,7 @@
                car.destroy();
             }
 
-            const speeds = [500, 250, 25];
+            /*const speeds = [500, 250, 25];
             const scales = [1, 0.8, 0.4];
             const ySpeeds = [50, 100, 80];
             const amounts = [250, 500, 2000];
@@ -589,7 +651,7 @@
                emitters[i].setXSpeed(0, 0);
 
                emitters[i].start(false, 12000, speeds[i]);
-            }
+            }*/
 
             earth = this.game.add.tileSprite(0, 0, consoleX, consoleY, 'earth');
             track = new Track(this.game, consoleX, consoleY, true, 96);
@@ -600,7 +662,7 @@
             car.sprite.body.drag.x = 50;
             car.sprite.body.drag.y = 50;
 
-            updateCallstack.call(this, consoleX);
+            updateDashboard.call(this, consoleX);
          }
 
          new Phaser.Game('100%', '100%', Phaser.AUTO, 'cars', { preload: preload, create: create, update: update, render: render });

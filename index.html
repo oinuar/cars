@@ -348,15 +348,12 @@
             };
          }
 
-         const smallLetters = [];
-         const bigLetters = [];
-         const emitters = [];
-
          let track = null;
          let car = null;
          let earth = null;
          let callstack = null;
          let carBody = null;
+         let matrix = null;
 
          function preload() {
             this.game.load.json('circuit', 'assets/circuits/a1ring.json');
@@ -365,11 +362,6 @@
          }
 
          function create() {
-            for (let i = 'a'.charCodeAt(0); i <= 'z'.charCodeAt(0); ++i) {
-               smallLetters.push(createBitmapSymbol.call(this, String.fromCharCode(i), 255, 255, 255));
-               bigLetters.push(createBitmapSymbol.call(this, String.fromCharCode(i).toUpperCase(), 255, 255, 255));
-            }
-
             // Use arcade style physics.
             this.game.physics.startSystem(Phaser.Physics.ARCADE);
 
@@ -390,8 +382,11 @@
                   return command.action(this.game, car, cmd);
                }
             })) {
-               updateDashboard.call(this, this.game.width - $('#dashboard').width());
+               updateDashboard.call(this, this.game.width - $('#dashboard').width(), this.game.height - $('#dashboard').height());
             }
+
+            const consoleX = this.game.width - $('#console').width();
+            const consoleY = this.game.height - $('#console').height();
 
             const hood = Phaser.Point.add(new Phaser.Point(car.sprite.x, car.sprite.y), car.getHood());
             const trunk = Phaser.Point.add(new Phaser.Point(car.sprite.x, car.sprite.y), car.getTrunk());
@@ -432,23 +427,15 @@
                car.sprite.body.velocity.y = 0;
                car.sprite.body.angularVelocity = 0;
             }
+
+            updateMatrixDigitalRain.call(this, consoleX, consoleY, 18, 18 * 1.5);
          }
 
          function render() {
             //this.game.debug.text(, 32, 64);
          }
 
-         function createBitmapSymbol(symbol, r, g, b) {
-            const bitmap = this.game.add.bitmapData(32, 32);
-            const text = this.game.make.text(0, 0, symbol, { font: 'bold 32px monospace' });
-
-            bitmap.fill(r, g, b);
-            bitmap.draw(text, 0, 0, null, null, 'destination-in');
-
-            return bitmap;
-         }
-
-         function updateDashboard(consoleX) {
+         function updateDashboard(consoleX, consoleY) {
             if (callstack !== null) {
                callstack.removeAll();
             }
@@ -614,6 +601,148 @@
             }
          }
 
+         function getMatrixDigitalRainCharacter() {
+            // Use the same set of characters that original Matrix digital rain uses.
+            switch (Math.trunc(Math.random() * 4)) {
+               // Half-width katakana.
+               case 0: return String.fromCharCode(Math.random() * (0xff9d - 0xff66) + 0xff66);
+
+               // Uppercase latin letter.
+               case 1: return String.fromCharCode(Math.random() * (0x5a - 0x41) + 0x41);
+
+               // Lowercase latin letter.
+               case 2: return String.fromCharCode(Math.random() * (0x7a - 0x61) + 0x61);
+
+               // Arabic numeral.
+               case 3: return String.fromCharCode(Math.random() * (0x39 - 0x30) + 0x30);
+            }
+
+            return undefined;
+         }
+
+         function fadeIn(alpha, steps, t) {
+            return Math.min(alpha + 1 / steps * t, 1);
+         }
+
+         function fadeOut(alpha, steps, t) {
+            return Math.max(alpha - 1 / steps * t, 0);
+         }
+
+         function updateMatrixDigitalRain(consoleX, consoleY, tickSpeed, trailSpeed) {
+            // Don't do anything if Matrix digital rain is not ready.
+            if (matrix === null) {
+               return;
+            }
+
+            for (let i = 0; i < matrix.children.length; ++i) {
+
+               // Spontaneously make trails to appear at equal probability in respect of columns, but only when
+               // the previous trail has finished.
+               if (Math.random() <= 1 / matrix.children.length && !matrix.children[i].children.some(x => x.alpha > 0)) {
+                  matrix.children[i].children[0].fill = 'rgba(255, 255, 255, 0.15)';
+                  matrix.children[i].children[0].alpha = fadeIn(matrix.children[i].children[0].alpha, matrix.children[i].children.length, this.game.time.elapsed / tickSpeed);
+               }
+
+               let j;
+
+               // When the trail has appeared, it should be moved forward. This applies trail effect forward,
+               // but only when the trail's first element is still visibile. Note that this implies that trails are
+               // visible at least as long as it takes to get from the first symbol to last.
+               for (j = matrix.children[i].children.length - 1; matrix.children[i].children[0].alpha > 0 && j >= 0; --j) {
+
+                  // Continue as long as there are non-visible symbols.
+                  if (matrix.children[i].children[j].alpha <= 0) {
+                     continue;
+                  }
+
+                  // This is the most immediate symbol that is visible.
+
+                  // If the symbol is fully visible, change its color and move forward.
+                  if (matrix.children[i].children[j].alpha >= 1) {
+
+                     // This symbol is now fully visible, change its color to passive one.
+                     matrix.children[i].children[j].fill = 'rgba(26, 208, 39, 0.15)';
+
+                     // We can only move forward if there are more symbols to come. When the trail is moved
+                     // forward, update symbol character, fade it in and set the active color.
+                     if (j + 1 < matrix.children[i].children.length) {
+                        matrix.children[i].children[j + 1].fill = 'rgba(255, 255, 255, 0.15)';
+                        matrix.children[i].children[j + 1].text = getMatrixDigitalRainCharacter();
+                        matrix.children[i].children[j + 1].alpha = fadeIn(matrix.children[i].children[j + 1].alpha, matrix.children[i].children.length, this.game.time.elapsed / tickSpeed);
+                     }
+                  }
+
+                  // Otherwise, the symbol is not yet fully visible so fade in effect is applied.
+                  else {
+                     matrix.children[i].children[j].alpha = fadeIn(matrix.children[i].children[j].alpha, matrix.children[i].children.length, this.game.time.elapsed / tickSpeed);
+                     j -= 1; // Note that this is required to not afterburn already fading in symbol.
+                  }
+
+                  // No need to continue since we apply updates only to the most immediate visible symbol.
+                  break;
+               }
+
+               // Apply trail afterburn up to current trail position.
+               for (let k = 0; k <= j; ++k) {
+
+                  // Compute how long afterburn the trail leaves. Note that trailSpeed must be greater than or
+                  // equal to tickSpeed to not to mess up with trail invocation logic.
+                  const trailLength = matrix.children[i].children.length * Math.max(trailSpeed, tickSpeed);
+
+                  // Symbol is faded out as an afterburn effect.
+                  matrix.children[i].children[k].alpha = fadeOut(matrix.children[i].children[k].alpha, matrix.children[i].children.length, this.game.time.elapsed / trailLength, 0);
+               }
+            }
+         }
+
+         function buildMatrixDigitalRain(consoleX, consoleY) {
+            if (matrix != null) {
+               matrix.removeAll();
+            }
+
+            matrix = this.game.add.group();
+
+            // Make symbols 24px of size and fill up whole console background area. Allow
+            // rows to overflow since they just overflow off the screen. Columns should not
+            // overflow since there are other stuff in the screen.
+            const symbolSize = 24;
+            const rows = Math.ceil((this.game.height - consoleY) / symbolSize);
+            const columns = Math.trunc(consoleX / symbolSize);
+
+            // Set to start at console y position.
+            matrix.y = consoleY;
+
+            // Create columns that contain rows.
+            for (let i = 0; i < columns; ++i) {
+               const column = this.game.add.group();
+
+               // Create rows that contain symbols.
+               for (let j = 0; j < rows; ++j) {
+
+                  // Create initial symbol.
+                  const character = getMatrixDigitalRainCharacter();
+                  const symbol = this.game.make.text(symbolSize * i + symbolSize / 2.0, symbolSize * j + symbolSize / 2.0, character, {
+                     font: `bold ${symbolSize}px Courier`
+                  });
+
+                  symbol.setShadow(0, 0, 'rgba(0, 203, 0, 0.5)', 10);
+
+                  // Set origin to center and flip the symbol because original version of
+                  // the rain uses also flipped symbols.
+                  symbol.anchor.set(0.5, 0.5);
+                  symbol.scale.x *= -1;
+
+                  // Initially, all symbols are not visible. The visibility is controlled
+                  // by the rain update function.
+                  symbol.alpha = 0.0;
+
+                  column.add(symbol);
+               }
+
+               matrix.add(column);
+            }
+         }
+
          function buildGame(consoleX, consoleY) {
             if (earth !== null) {
                earth.destroy();
@@ -627,32 +756,6 @@
                car.destroy();
             }
 
-            /*const speeds = [500, 250, 25];
-            const scales = [1, 0.8, 0.4];
-            const ySpeeds = [50, 100, 80];
-            const amounts = [250, 500, 2000];
-
-            for (let i = 0; i < 3; ++i) {
-               if (emitters[i] !== undefined) {
-                  emitters[i].destroy();
-               }
-
-               emitters[i] = this.game.add.emitter(consoleX / 2.0, consoleY - 32, amounts[i])
-
-               emitters[i].makeParticles(smallLetters);
-               emitters[i].maxParticleScale = scales[i];
-               emitters[i].minParticleScale = scales[i];
-               emitters[i].minRotation = 0;
-               emitters[i].maxRotation = 0;
-               emitters[i].gravity = 0;
-               emitters[i].width = consoleX;
-
-               emitters[i].setYSpeed(ySpeeds[i], ySpeeds[i]);
-               emitters[i].setXSpeed(0, 0);
-
-               emitters[i].start(false, 12000, speeds[i]);
-            }*/
-
             earth = this.game.add.tileSprite(0, 0, consoleX, consoleY, 'earth');
             track = new Track(this.game, consoleX, consoleY, true, 96);
             car = new Car(this.game, track, 96);
@@ -662,7 +765,8 @@
             car.sprite.body.drag.x = 50;
             car.sprite.body.drag.y = 50;
 
-            updateDashboard.call(this, consoleX);
+            buildMatrixDigitalRain.call(this, consoleX, consoleY);
+            updateDashboard.call(this, consoleX, consoleY);
          }
 
          new Phaser.Game('100%', '100%', Phaser.AUTO, 'cars', { preload: preload, create: create, update: update, render: render });
